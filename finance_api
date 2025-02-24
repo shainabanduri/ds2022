@@ -1,0 +1,116 @@
+import requests
+import json
+import pandas as pd
+import os
+from dotenv import load_dotenv
+
+# Load API key from .env file
+load_dotenv()
+API_KEY = os.getenv("API_KEY")
+
+if not API_KEY:
+    raise ValueError("API Key not found! Set API_KEY in the environment or .env file.")
+
+class FinanceAPI:
+    """Class to interact with the Finance API."""
+    BASE_URL = "https://yfapi.net/v6/finance/quote"
+
+    def __init__(self, api_key):
+        self.api_key = api_key
+        self.headers = {'x-api-key': self.api_key}
+
+    def fetch_stock_data(self, symbols):
+        """Fetch stock ticker, company name, and current market price."""
+        querystring = {"symbols": ",".join(symbols)}
+        response = requests.get(self.BASE_URL, headers=self.headers, params=querystring)
+
+        if response.status_code != 200:
+            print(f"Error: {response.status_code}, {response.text}")
+            return None
+
+        try:
+            stock_data = response.json().get('quoteResponse', {}).get('result', [])
+            results = [
+                {
+                    "Stock Ticker": stock.get("symbol", "N/A"),
+                    "Company Name": stock.get("shortName", "N/A"),
+                    "Current Market Price": f"${stock.get('regularMarketPrice', 'N/A')}"
+                }
+                for stock in stock_data
+            ]
+            return results
+        except Exception as e:
+            print(f"Error parsing response: {e}")
+            return None
+
+    def fetch_module_data(self, symbol):
+        """Fetch 52 Week High, 52 Week Low, and Return on Assets (ROA)."""
+        querystring = {"symbols": symbol}
+        response = requests.get(self.BASE_URL, headers=self.headers, params=querystring)
+
+        if response.status_code != 200:
+            print(f"Error: {response.status_code}, {response.text}")
+            return None
+
+        try:
+            stock_data = response.json().get('quoteResponse', {}).get('result', [{}])[0]
+            data = {
+                "52 Week High": f"${stock_data.get('fiftyTwoWeekHigh', 'N/A')}",
+                "52 Week Low": f"${stock_data.get('fiftyTwoWeekLow', 'N/A')}",
+                "Return on Assets (ROA)": stock_data.get('returnOnAssets', 'N/A')
+            }
+            return pd.DataFrame([data])
+        except Exception as e:
+            print(f"Error parsing module data: {e}")
+            return None
+
+    def fetch_trending_stocks(self):
+        """Fetch trending stocks with their price and 52 Week High/Low."""
+        trending_url = "https://yfapi.net/v1/finance/trending/US"
+        response = requests.get(trending_url, headers=self.headers)
+
+        if response.status_code != 200:
+            print(f"Error: {response.status_code}, {response.text}")
+            return None
+
+        try:
+            trending_stocks = response.json().get('finance', {}).get('result', [{}])[0].get('quotes', [])
+            data = [
+                {
+                    "Stock Ticker": stock.get("symbol", "N/A"),
+                    "Company Name": stock.get("shortName", "N/A"),
+                    "Current Market Price": f"${stock.get('regularMarketPrice', 'N/A')}",
+                    "52 Week High": f"${stock.get('fiftyTwoWeekHigh', 'N/A')}",
+                    "52 Week Low": f"${stock.get('fiftyTwoWeekLow', 'N/A')}"
+                }
+                for stock in trending_stocks
+            ]
+            return pd.DataFrame(data)
+        except Exception as e:
+            print(f"Error parsing trending stocks: {e}")
+            return None
+
+if __name__ == "__main__":
+    finance_api = FinanceAPI(API_KEY)
+
+    # Task 1: Fetch stock data
+    symbols = input("Enter stock symbols (comma separated): ").split(',')
+    stock_data = finance_api.fetch_stock_data(symbols)
+
+    if stock_data:
+        print("\n--- Stock Data ---")
+        for data in stock_data:
+            print(f"Stock Ticker: {data['Stock Ticker']}, Company: {data['Company Name']}, Current Market Price: {data['Current Market Price']}")
+
+    # Task 2.1: Fetch additional stock data
+    symbol = input("\nEnter a stock symbol for additional data: ")
+    module_data = finance_api.fetch_module_data(symbol)
+    if module_data is not None:
+        print("\n--- Additional Stock Data ---")
+        print(module_data)
+
+    # Task 2.2: Fetch trending stocks
+    print("\n--- Trending Stocks ---")
+    trending_df = finance_api.fetch_trending_stocks()
+    if trending_df is not None:
+        print(trending_df)
